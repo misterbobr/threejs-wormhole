@@ -1,3 +1,4 @@
+import gsap from 'gsap';
 import * as THREE from 'three';
 import { Clock } from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -6,15 +7,16 @@ import { randFloat, randInt } from 'three/src/math/mathutils';
 
 const scene = new THREE.Scene();
 
-const camera = new THREE.PerspectiveCamera( 75, window.innerWidth / window.innerHeight, 0.1, 1000 );
+const camera = new THREE.PerspectiveCamera( 60, window.innerWidth / window.innerHeight, 0.01, 1000 );
 camera.position.x = 0;
 camera.position.y = 0;
 camera.position.z = 5;
 
-const renderer = new THREE.WebGLRenderer();
+const renderer = new THREE.WebGLRenderer({antialias: true});
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setClearColor(0);
 document.body.appendChild(renderer.domElement);
+renderer.domElement.style.opacity = 0;
 
 window.addEventListener('resize', () =>
 {
@@ -51,11 +53,21 @@ window.addEventListener('resize', () =>
 //     console.log(r, g, b)
 // }
 
-const   space_length = 1000,
-        wormhole_length = 400,
-        space_velocity = 0.003,
-        wormhole_velocity = 0.010,
-        wormhole_freq = 6;
+// const   space_length        = 1000,
+//         wormhole_length     = 400,
+//         space_velocity      = 3 * 0.001,
+//         space_rotation      = -2 * 0.0001,
+//         wormhole_rotation   = 1 * 0.001,
+//         wormhole_velocity   = 5 * 0.001,
+//         wormhole_freq       = 6;
+
+const   space_length        = 1000,
+        wormhole_length     = 600,
+        space_velocity      = 15 * 0.001,
+        space_rotation      = -10 * 0.0001,
+        wormhole_rotation   = 15 * 0.001,
+        wormhole_velocity   = 15 * 0.001,
+        wormhole_freq       = 6;
 
 const loader = new THREE.TextureLoader();
 
@@ -93,29 +105,42 @@ plane.rotateZ(Math.PI / 2);
 plane.position.z = -space_length * 0.5;
 scene.add(plane);
 
-const gm = new THREE.CylinderGeometry(15, 15, wormhole_length, 60, 100, true);
-const mat = new THREE.MeshBasicMaterial({ color: 0x3399cc, side: THREE.DoubleSide, transparent: true, alphaMap: alphaMap, wireframe: true });
-const cyl = new THREE.Mesh(gm, mat);
-cyl.rotateX(Math.PI * 0.5);
+const gmWh = new THREE.CylinderGeometry(15, 15, wormhole_length, 60, 100, true);
+const matWh = new THREE.MeshBasicMaterial({ color: 0x3399cc, side: THREE.DoubleSide, transparent: true, alphaMap: alphaMap, wireframe: true, opacity: 0.7 });
+const Wh = new THREE.Mesh(gmWh, matWh);
+Wh.rotateX(Math.PI * 0.5);
 // cyl.position.z = -wormhole_length * 0.2;
-scene.add(cyl);
+scene.add(Wh);
 
-const gm2 = new THREE.CylinderGeometry(20, 20, space_length, 60, 1, true);
-const mat2 = new THREE.MeshBasicMaterial({ map: spaceTexture, side: THREE.BackSide, wireframe: false });
-const cyl2 = new THREE.Mesh(gm2, mat2);
-cyl2.rotateX(Math.PI * 0.5);
+const gmSp = new THREE.CylinderGeometry(20, 20, space_length, 60, 1, true);
+const matSp = new THREE.MeshBasicMaterial({ map: spaceTexture, side: THREE.BackSide, wireframe: false });
+// const matSp = new THREE.MeshStandardMaterial({ map: spaceTexture, side: THREE.BackSide, wireframe: false });
+const Sp = new THREE.Mesh(gmSp, matSp);
+Sp.rotateX(Math.PI * 0.5);
 // cyl2.position.z = -160;
-scene.add(cyl2);
+scene.add(Sp);
+
+const gmStar = new THREE.SphereGeometry(0.05, 15, 15);
+const matStar = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide, transparent: true, opacity: 0 });
+const stars = Array(250).fill(0);
+for (let n = 0; n < stars.length; n++) {
+    stars[n] = new THREE.Mesh(gmStar, matStar);
+    stars[n].position.set(randFloat(-15, 15), randFloat(-15, 15), randFloat(-150, 150));
+    scene.add(stars[n]);
+}
 
 const noise = createNoise3D();
 
-const pLight = new THREE.SpotLight(0xffffff, 1);
-pLight.position.set(0, 0, 0);
-pLight.target.position.set(0, 0, -10);
+const pLight = new THREE.PointLight(0xffffff, 0, space_length);
+// pLight.position.set(0, 0, 0);
+// pLight.target.position.set(0, 0, -10);
 scene.add(pLight);
+// const helper = new THREE.SpotLightHelper(pLight, 0xff0000);
+// scene.add(helper);
 
 const controls = new OrbitControls( camera, renderer.domElement );
 // var c = 0;
+const c = new Clock();
 function anim() {
     // console.log("========================================")
     // console.log(c)
@@ -123,7 +148,7 @@ function anim() {
     // camera.position.y += camY;
     // camY *= 0.92;
     
-    const position = cyl.geometry.attributes.position;
+    const position = Wh.geometry.attributes.position;
     // const position2 = cyl2.geometry.attributes.position;
     const v = new THREE.Vector3();
     const v2 = new THREE.Vector3();
@@ -132,7 +157,7 @@ function anim() {
 
         v.fromBufferAttribute( position, k );
         let y_ = v.y;
-        let dist = Math.hypot(v.y, cyl.geometry.parameters.radiusTop);
+        let dist = Math.hypot(v.y, Wh.geometry.parameters.radiusTop);
         v.normalize();
         let d = dist + noise(
             v.x + time,
@@ -155,18 +180,36 @@ function anim() {
 
     alphaMap.offset.y -= wormhole_velocity
     spaceTexture.offset.y -= space_velocity
-    cyl.geometry.verticesNeedUpdate = true;
-    cyl.geometry.attributes.position.needsUpdate = true;
-    cyl.geometry.normalsNeedUpdate = true;
-    // cyl2.geometry.verticesNeedUpdate = true;
-    // cyl2.geometry.attributes.position.needsUpdate = true;
-    // cyl2.geometry.normalsNeedUpdate = true;
-    cyl.rotateY(0.001);
-    cyl2.rotateY(-0.0002);
+    Wh.geometry.verticesNeedUpdate = true;
+    Wh.geometry.attributes.position.needsUpdate = true;
+    Wh.geometry.normalsNeedUpdate = true;
+    // Sp.geometry.verticesNeedUpdate = true;
+    // Sp.geometry.attributes.position.needsUpdate = true;
+    // Sp.geometry.normalsNeedUpdate = true;
+    Wh.rotateY(wormhole_rotation);
+    Sp.rotateY(space_rotation);
     // camera.position.z -= 0.3
     // cyl.position.z -= 0.3
+    stars.forEach((star) => {
+        if (Math.abs(star.position.z - camera.position.z) < 150) {
+            star.position.z += 0.1;
+        }
+        else if (scene.children.includes(star)) {
+            star.position.z = -150 + camera.position.z + 1;
+        }
+    })
+    // console.log(stars[0].position.z - camera.position.z)
     requestAnimationFrame(anim);
     renderer.render(scene, camera);
-    // console.log(noise(0.00001 * t, 0.00003 * t, 0.00005 * t));    
+    // console.log(noise(0.00001 * t, 0.00003 * t, 0.00005 * t));
 }
+
+function gsapInit() {
+    gsap.to(pLight, {intensity: 1, duration: 5});
+    gsap.to(renderer.domElement.style, {opacity: 1, duration: 3}, 1);
+    gsap.to(matStar, {opacity: 0.8, duration: 3});
+}
+
 anim();
+gsapInit();
+
