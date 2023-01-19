@@ -88,7 +88,12 @@ const venusAtmosphereTexture = loader.load('./image/venus_atmosphere.jpg', funct
     atm.anisotropy = renderer.capabilities.getMaxAnisotropy() / 2;
 });
 const venusAtmosphereAlpha = loader.load('./image/venus_atmosphere_alpha_map.jpg');
-const earthDayTexture = loader.load('./image/earth_day.jpg');
+const earthDayTexture = loader.load('./image/earth_day.jpg', function ( day ) {
+    day.offset.set( 0.2, 0.1 );
+});
+const earthNightTexture = loader.load('./image/earth_night.jpg', function ( night ) {
+    // night.offset.set( 0.5, 0.5 );
+});
 const uranusTexture = loader.load('./image/uranus.jpg');
 const uranusRingTexture = loader.load('./image/uranus_ring_alpha_polar.png');
 
@@ -151,8 +156,42 @@ planets['venusAtmosphere'] = new THREE.Mesh(gmVenusAtmosphere, matVenusAtmospher
 planets['venusAtmosphere'].position.set(70, 0, 0);
 venusOrbit.add(planets['venusAtmosphere']);
 
+const earthShader = {
+    dayTexture: {
+        type: 't',
+        value: earthDayTexture
+    },
+    nightTexture: {
+        type: 't',
+        value: earthNightTexture
+    }
+}
 const gmEarth = new THREE.SphereGeometry(4, 32, 36);
-const matEarth = new THREE.MeshStandardMaterial({ side: THREE.FrontSide, map: earthDayTexture, transparent: true, opacity: 1 });
+// const matEarth = new THREE.MeshStandardMaterial({ side: THREE.FrontSide, map: earthDayTexture, transparent: true, opacity: 1 });
+const matEarth = new THREE.ShaderMaterial({
+    uniforms: earthShader,
+    vertexShader: `
+        out vec2 vUv;
+        void main() {
+            vUv = uv;
+            gl_Position =   projectionMatrix * 
+                            modelViewMatrix * 
+                            vec4(position,1.0);
+        }`,
+    fragmentShader: `
+        uniform sampler2D dayTexture;
+        uniform sampler2D nightTexture;
+
+        in vec2 vUv;
+
+        void main() {
+            vec4 t0 = texture(dayTexture, vUv);
+            vec4 t1 = texture(nightTexture, vUv);
+            gl_FragColor = mix(t0, t1, (sin(vUv.x * ${Math.PI * 2}) + 1.0) / 2.0);
+            // gl_FragColor = texture2D(nightTexture, vUv);
+        }
+    `
+});
 planets['earth'] = new THREE.Mesh(gmEarth, matEarth);
 // planets['earth'].position.set(70, 0, 0);
 earthOrbit.add(planets['earth']);
