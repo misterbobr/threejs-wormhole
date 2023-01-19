@@ -91,6 +91,8 @@ const uranusRingTexture = loader.load('./image/uranus_ring_alpha_polar.png', fun
 
 })
 
+// const whGroup = new THREE.Group();
+// const planetsGroup = new THREE.Group();
 
 const gmBack = new THREE.SphereGeometry(space_length * 1.1 / 2, 100, 100, 1, Math.PI * 2);
 const matBack = new THREE.MeshBasicMaterial({ map: background, side: THREE.BackSide, transparent: true, opacity: 0 });
@@ -182,9 +184,12 @@ function anim() {
         if (camera.position.z < -space_length * 0.95) {
             flag = false;
             gsap.to(renderer.domElement.style, {opacity: 0, duration: 0.5});
-            gsap.to(camera.position, {z: -space_length, duration: 0}, '>0');
+            gsap.to(camera.position, {z: 0, duration: 0}, '>0');
             gsap.to(renderer.domElement.style, {opacity: 1, duration: 2}, '>2');
         }
+    }
+    else {
+        scene.remove(Sp, Wh);
     }
     
     const position = Wh.geometry.attributes.position;
