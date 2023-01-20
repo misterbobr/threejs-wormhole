@@ -1,6 +1,6 @@
 import gsap from 'gsap';
 import * as THREE from 'three';
-import { Clock } from 'three';
+import { AdditiveBlending, Clock, NoBlending } from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 const { createNoise3D } = require('simplex-noise');
 import * as dat from 'dat.gui';
@@ -8,6 +8,7 @@ import { randFloat, randInt } from 'three/src/math/mathutils';
 
 const gui = new dat.GUI();
 const scene = new THREE.Scene();
+// scene.fog = new THREE.Fog(0x555555, 10, 2000);
 
 const renderer = new THREE.WebGLRenderer({antialias: true});
 renderer.setSize(window.innerWidth, window.innerHeight);
@@ -90,14 +91,16 @@ const venusAtmosphereTexture = loader.load('./image/venus_atmosphere.jpg', funct
     atm.anisotropy = renderer.capabilities.getMaxAnisotropy() / 2;
 });
 const venusAtmosphereAlpha = loader.load('./image/venus_atmosphere_alpha_map.jpg');
-const earthDayTexture = loader.load('./image/earth_day.jpg', function ( day ) {
-    day.offset.set( 0.2, 0.1 );
-});
-const earthNightTexture = loader.load('./image/earth_night.jpg', function ( night ) {
-    // night.offset.set( 0.5, 0.5 );
-});
+const earthDayTexture = loader.load('./image/earth_day.jpg');
+const earthNightTexture = loader.load('./image/earth_night.jpg');
+const earthNormalMap = loader.load('./image/earth_normal_map.tif');
+const marsTexture = loader.load('./image/mars.jpg');
+const jupiterTexture = loader.load('./image/jupiter.jpg');
+const saturnTexture = loader.load('./image/saturn.jpg');
+const saturnRingTexture = loader.load('./image/saturn_ring_alpha_polar.png');
 const uranusTexture = loader.load('./image/uranus.jpg');
 const uranusRingTexture = loader.load('./image/uranus_ring_alpha_polar.png');
+const neptuneTexture = loader.load('./image/neptune.jpg');
 
 const planetsGroup      = new THREE.Group();
 const mercuryOrbit      = new THREE.Group();
@@ -117,9 +120,7 @@ planetsGroup.add(
     marsOrbit,
     jupiterOrbit,
     saturnOrbit,
-    saturnRingOrbit,
     uranusOrbit,
-    uranusRingOrbit,
     neptuneOrbit
 );
 
@@ -155,6 +156,8 @@ const matVenusAtmosphere = new THREE.MeshStandardMaterial({ side: THREE.FrontSid
 planets['venusAtmosphere'] = new THREE.Mesh(gmVenusAtmosphere, matVenusAtmosphere);
 venusOrbit.add(planets['venusAtmosphere']);
 
+
+// const earthPosition = new THREE.Vector3(0, 0, -40);
 const earthPosition = new THREE.Vector3(100, 0, 100);
 const zVect = new THREE.Vector3(0, 0, -1);
 const earthShader = {
@@ -164,17 +167,28 @@ const earthShader = {
     nightTexture: {
         value: earthNightTexture
     },
+    normalMap: {
+        value: earthNormalMap
+    },
     angle: {
         type: 'f',
         value: zVect.angleTo(earthPosition) * (earthPosition.x < 0 ? -1 : 1)
     },
+    earthPosition: {
+        type: 'v3',
+        value: earthPosition
+    },
     rotY: {
         type: 'f',
-        value: -2 * Math.PI
+        value: 0
     },
     tilt: {
         type: 'f',
-        value: 0.5
+        value: 0.0
+    },
+    opacity: {
+        type: 'f',
+        value: 1.0
     }
 }
 
@@ -183,54 +197,44 @@ const earthShader = {
 // folder.open();
 // console.log(new THREE.Vector3(0, 0, -1).angleTo(earthPosition) * (earthPosition.x < 0 ? -1 : 1))
 
-const gmEarth = new THREE.SphereGeometry(4, 32, 36);
+const gmEarth = new THREE.SphereGeometry(4, 100, 100);
 // const matEarth = new THREE.MeshStandardMaterial({ side: THREE.FrontSide, map: earthDayTexture, transparent: true, opacity: 1 });
-function uv_translation(u, v, du, dv) {
-    if (v + dv > 1) {
-        u = (u + 0.5 > 1) ? u - 0.5 : u + 0.5;
-    };
-    u = (u + du > 1)
-        ? u + du - 1
-        : ((u + du < 0)
-        ? u + du + 1
-        : u + du);
-    v = (v + dv > 1)
-    ? 2 - v - dv
-    : ((v + dv < 0)
-    ? -v - dv
-    : v + dv);
-    return new THREE.Vector2(u, v);
-}
-// console.log(uv_translation(0.6, 0.85, -0.7, 0.25))
+// function uv_translation(u, v, du, dv) {
+//     if (v + dv > 1) {
+//         u = (u + 0.5 > 1) ? u - 0.5 : u + 0.5;
+//     };
+//     u = (u + du > 1)
+//         ? u + du - 1
+//         : ((u + du < 0)
+//         ? u + du + 1
+//         : u + du);
+//     v = (v + dv > 1)
+//     ? 2 - v - dv
+//     : ((v + dv < 0)
+//     ? -v - dv
+//     : v + dv);
+//     return new THREE.Vector2(u, v);
+// }
 
 const matEarth = new THREE.ShaderMaterial({
     uniforms: earthShader,
     vertexShader: `
-        out vec2 vUv;
-        void main() {
-            vUv = uv;
-            gl_Position =   projectionMatrix * 
-                            modelViewMatrix * 
-                            vec4(position,1.0);
-        }`,
+		out vec2 vUv;
+		
+		void main() {
+			vUv = uv;
+			gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+		}
+	`,
     fragmentShader: `
         uniform sampler2D dayTexture;
         uniform sampler2D nightTexture;
         uniform float angle;
         uniform float rotY;
         uniform float tilt;
+        uniform float opacity;
 
-        in vec2 vUv;
-
-        // vec2 rotateUV(vec2 uv, vec2 pivot, float rotation) {
-        //     float cosa = cos(rotation);
-        //     float sina = sin(rotation);
-        //     uv -= pivot;
-        //     return vec2(
-        //         cosa * uv.x - sina * uv.y,
-        //         cosa * uv.y + sina * uv.x 
-        //     ) + pivot;
-        // }
+		in vec2 vUv;
 
         float addLight(vec2 vUv_) {
             float result = min(1.1, max(-0.1, (-sin(vUv_.x * ${Math.PI * 2} + angle + rotY) + 1.0) * 1.8 / 2.0 * (cos((vUv_.y - tilt / ${Math.PI}) * ${Math.PI / 2}) + 0.7) / 1.5));
@@ -240,20 +244,43 @@ const matEarth = new THREE.ShaderMaterial({
         }
 
         void main() {
-            // vec2 pivot = vec2(0.5, 0.5);
-            // vec2 vUv_tilt = rotateUV(vUv, pivot, 0.4);
             vec4 t0 = texture(dayTexture, vUv);
             vec4 t1 = texture(nightTexture, vUv);
+            t0.a = opacity;
+            t1.a = opacity;
+
             gl_FragColor = mix(t0, t1, addLight(vUv));
-            // gl_FragColor = mix(t0, t1, (-sin(vUv.x * ${Math.PI * 2} + angle) + 1.0) / 2.0 * (cos((vUv.y - tilt) * ${Math.PI / 2}) + 0.7) / 1.5);
-            // gl_FragColor = mix(t0, t1, (-sin(vUv.x * ${Math.PI * 2} + angle) + 1.0) / 2.0 * (cos((vUv.y - 0.2) * ${Math.PI / 2}) + 0.7) / 1.5);
             // gl_FragColor = texture2D(dayTexture, vUv);
         }
-    `
+    `,
+    transparent: true,
 });
 planets['earth'] = new THREE.Mesh(gmEarth, matEarth);
 planets['earth'].rotateX(Math.PI / 2 * 24 / 90);
 earthOrbit.add(planets['earth']);
+
+
+const gmMars = new THREE.SphereGeometry(3, 40, 32);
+const matMars = new THREE.MeshStandardMaterial({ side: THREE.FrontSide, map: marsTexture, transparent: true, opacity: 1 });
+planets['mars'] = new THREE.Mesh(gmMars, matMars);
+marsOrbit.add(planets['mars']);
+
+const gmJupiter = new THREE.SphereGeometry(13, 80, 60);
+const matJupiter = new THREE.MeshStandardMaterial({ side: THREE.FrontSide, map: jupiterTexture, transparent: true, opacity: 1 });
+planets['jupiter'] = new THREE.Mesh(gmJupiter, matJupiter);
+jupiterOrbit.add(planets['jupiter']);
+
+const gmSaturn = new THREE.SphereGeometry(12, 80, 60);
+const matSaturn = new THREE.MeshStandardMaterial({ side: THREE.FrontSide, map: saturnTexture, transparent: true, opacity: 1 });
+planets['saturn'] = new THREE.Mesh(gmSaturn, matSaturn);
+saturnOrbit.add(planets['saturn']);
+
+const gmSaturnRing = new THREE.RingGeometry(13.5, 24, 64);
+const matSaturnRing = new THREE.MeshStandardMaterial({ side: THREE.DoubleSide, map: saturnRingTexture, transparent: true, opacity: 1 });
+planets['saturnRing'] = new THREE.Mesh(gmSaturnRing, matSaturnRing);
+saturnRingOrbit.rotateX(Math.PI / 2 * 100 / 90);
+saturnRingOrbit.add(planets['saturnRing']);
+saturnOrbit.add(saturnRingOrbit);
 
 const gmUranus = new THREE.SphereGeometry(8, 60, 40);
 const matUranus = new THREE.MeshStandardMaterial({ side: THREE.FrontSide, map: uranusTexture, transparent: true, opacity: 1 });
@@ -270,6 +297,10 @@ uranusRingOrbit.rotateX(Math.PI / 2 * 8 / 90);
 uranusRingOrbit.add(planets['uranusRing']);
 uranusOrbit.add(uranusRingOrbit);
 
+const gmNeptune = new THREE.SphereGeometry(8, 60, 40);
+const matNeptune = new THREE.MeshStandardMaterial({ side: THREE.FrontSide, map: neptuneTexture, transparent: true, opacity: 1 });
+planets['neptune'] = new THREE.Mesh(gmNeptune, matNeptune);
+neptuneOrbit.add(planets['neptune']);
 
 scene.add(planetsGroup);
 
@@ -299,9 +330,9 @@ scene.add(planetsGroup);
 
 const pLight = new THREE.PointLight(0xffffff, 1);
 pLight.position.copy(planets['sun'].position);
-pLight.position.set(0, 0, 0);
-// pLight.target.position.set(0, 0, -10);
 planetsGroup.add(pLight);
+const aLight = new THREE.AmbientLight(0xffffff, 0.05);
+scene.add(aLight);
 // const helper = new THREE.SpotLightHelper(pLight, 0xff0000);
 // scene.add(helper);
 let flag = true;
@@ -335,32 +366,36 @@ function rotatePlanet(planet, rotSpeed) {
     planet.rotateOnAxis(new THREE.Vector3(0, 1, 0), rotSpeed);
 }
 
-const       mercuryStart = new THREE.Vector3(50, 0, 0),
-            venusStart = new THREE.Vector3(-70, 0, 70),
+const       mercuryStart = new THREE.Vector3(45, 0, 0),
+            venusStart = new THREE.Vector3(-60, 0, 70),
             earthStart = new THREE.Vector3().copy(earthPosition),
-            marsStart = new THREE.Vector3(),
-            jupiterStart = new THREE.Vector3(),
-            saturnStart = new THREE.Vector3(),
-            uranusStart = new THREE.Vector3(-180, 0, 150),
-            neptuneStart = new THREE.Vector3();
-
-// console.log(planets.uranusRing.worldToLocal(new THREE.Vector3(0, 1, 0)))
-// const arrowHelper = new THREE.ArrowHelper( planets.uranusRing.worldToLocal(new THREE.Vector3(0, 1, 0)), uranusStart, 100, 0xff0000 );
-// scene.add( arrowHelper );
+            marsStart = new THREE.Vector3(130, 0, -150),
+            jupiterStart = new THREE.Vector3(-220, 0, -300),
+            saturnStart = new THREE.Vector3(150, 0, -520),
+            uranusStart = new THREE.Vector3(-800, 0, 300),
+            neptuneStart = new THREE.Vector3(700, 0, 700);
 
 mercuryOrbit.position.copy(mercuryStart);
 venusOrbit.position.copy(venusStart);
 earthOrbit.position.copy(earthStart);
+marsOrbit.position.copy(marsStart);
+jupiterOrbit.position.copy(jupiterStart);
+saturnOrbit.position.copy(saturnStart);
 uranusOrbit.position.copy(uranusStart);
+neptuneOrbit.position.copy(neptuneStart);
 // planets['uranus'].position.copy(uranusStart);
 // planets['uranusRing'].position.copy(uranusStart);
 
 const rotSpeed = 2;
-const       mercuryRot  = 0.01 * rotSpeed,
-            venusRot    = -0.001 * rotSpeed,
-            earthRot    = 0.01 * rotSpeed,
-            uranusRot   = -0.005 * rotSpeed,
-            uranusRingRot   = -0.0002 * rotSpeed;
+const       mercuryRot  = 0.0003 * rotSpeed,
+            venusRot    = -0.00005 * rotSpeed,
+            earthRot    = 0.003 * rotSpeed,
+            marsRot    = 0.003 * rotSpeed,
+            jupiterRot    = 0.005 * rotSpeed,
+            saturnRot    = 0.004 * rotSpeed,
+            uranusRot   = -0.0015 * rotSpeed,
+            uranusRingRot   = -0.0002 * rotSpeed,
+            neptuneRot   = 0.0015 * rotSpeed;
 
 function anim() {
     let time = clock.getElapsedTime();
@@ -395,22 +430,34 @@ function anim() {
 
     earthPosition.copy(earthOrbit.position);
     earthShader.angle.value = zVect.angleTo(earthPosition) * (earthPosition.x < 0 ? -1 : 1);
-    earthShader.tilt.value = (Math.sin(Math.atan2(earthPosition.z, earthPosition.x)) + 1) / 2;
-    
+    // earthShader.pointLightPosition.value.copy(pLight.position)
+    // earthShader.tilt.value = (Math.sin(Math.atan2(earthPosition.z, earthPosition.x)) + 1) / 2;
+    // earthShader.opacity.value += 0.001;
     earthShader.rotY.value = (earthShader.rotY.value + earthRot > Math.PI * 2)
-                            ? -2 * Math.PI
+                            ? 0
                             : earthShader.rotY.value + earthRot;
+    
     rotateOrbit(mercuryOrbit, mercuryStart, time);
     rotateOrbit(venusOrbit, venusStart, time);
     rotateOrbit(earthOrbit, earthStart, time);
+    rotateOrbit(marsOrbit, marsStart, time);
+    rotateOrbit(jupiterOrbit, jupiterStart, time);
+    rotateOrbit(saturnOrbit, saturnStart, time);
     rotateOrbit(uranusOrbit, uranusStart, time);
+    rotateOrbit(neptuneOrbit, neptuneStart, time);
     rotatePlanet(planets['mercury'], mercuryRot);
     rotatePlanet(planets['venus'], venusRot);
     rotatePlanet(planets['venusAtmosphere'], venusRot);
     rotatePlanet(planets['earth'], earthRot);
+    rotatePlanet(planets['mars'], marsRot);
+    rotatePlanet(planets['jupiter'], jupiterRot);
+    rotatePlanet(planets['saturn'], saturnRot);
+    // rotatePlanet(planets['saturnRing'], saturnRot);
     rotatePlanet(planets['uranus'], uranusRot);
-    planets['venusAtmosphere'].rotateOnAxis(new THREE.Vector3(-1, 1, 1).normalize(), 0.001);
+    rotatePlanet(planets['neptune'], neptuneRot);
+    planets['venusAtmosphere'].rotateOnAxis(new THREE.Vector3(-0.5, 1.5, 1).normalize(), 0.001);
     uranusRingOrbit.rotateOnAxis(new THREE.Vector3(0, 0, 1), 0.003);
+    saturnRingOrbit.rotateOnAxis(new THREE.Vector3(0, 0, 1), saturnRot);
     // planetsGroup.rotateY(0.001);
     // planets['uranusRing'].rotateZ(0.001)
 
@@ -419,3 +466,29 @@ function anim() {
 }
 
 anim();
+
+// const gmEarthAtmosphere = new THREE.SphereGeometry(4, 32, 36);
+// const matEarthAtmosphere = new THREE.ShaderMaterial({
+//     vertexShader: `
+//         out vec3 vNormal;
+//         void main() {
+//             vNormal = normalize(normalMatrix * normal);
+//             gl_Position =   projectionMatrix * 
+//                             modelViewMatrix * 
+//                             vec4(position,1.0);
+//         }`,
+//     fragmentShader: `
+//         in vec3 vNormal;
+//         void main() {
+//             float intensity = pow(0.3 - dot(vNormal, vec3(0, 0, 1.0)), 2.0);
+//             gl_FragColor = vec4(0.3, 0.6, 1.0, 1.0) * intensity;
+//         }
+//     `,
+//     blending: THREE.AdditiveBlending,
+//     side: THREE.BackSide,
+//     transparent: true,
+//     opacity: 1
+// });
+// planets['earthAtmosphere'] = new THREE.Mesh(gmEarthAtmosphere, matEarthAtmosphere);
+// planets['earthAtmosphere'].scale.multiplyScalar(1.08);
+// earthOrbit.add(planets['earthAtmosphere']);
