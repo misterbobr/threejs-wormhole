@@ -91,7 +91,6 @@ const sunTexture = loader.load('./image/sun.jpg', function ( sun ) {
     sun.anisotropy = renderer.capabilities.getMaxAnisotropy();
 });
 
-const emptyTexture = loader.load('./image/empty.png');
 const mercuryTexture = loader.load('./image/mercury.jpg');
 const venusTexture = loader.load('./image/venus.jpg');
 const venusAtmosphereTexture = loader.load('./image/venus_atmosphere.jpg', function ( atm ) {
