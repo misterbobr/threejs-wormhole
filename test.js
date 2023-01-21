@@ -13,6 +13,8 @@ const scene = new THREE.Scene();
 const renderer = new THREE.WebGLRenderer({antialias: true});
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setClearColor(0);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 document.body.appendChild(renderer.domElement);
 renderer.domElement.style.opacity = 1;
 
@@ -23,7 +25,11 @@ window.addEventListener('resize', () =>
 
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-})
+});
+
+// const folder = gui.addFolder('vars');
+// folder.add(renderer, 'physicallyCorrectLights' );
+// folder.open();
 
 let camZ = 0;
 window.addEventListener('wheel', (e) => 
@@ -52,8 +58,8 @@ const   space_length        = 1000
 
 const camera = new THREE.PerspectiveCamera( 60, window.innerWidth / window.innerHeight, 0.01, 2000 );
 camera.position.x = 0;
-camera.position.y = 500;
-camera.position.z = 300;
+camera.position.y = 300;
+camera.position.z = 400;
 
 const loader = new THREE.TextureLoader();
 
@@ -85,6 +91,7 @@ const sunTexture = loader.load('./image/sun.jpg', function ( sun ) {
     sun.anisotropy = renderer.capabilities.getMaxAnisotropy();
 });
 
+const emptyTexture = loader.load('./image/empty.png');
 const mercuryTexture = loader.load('./image/mercury.jpg');
 const venusTexture = loader.load('./image/venus.jpg');
 const venusAtmosphereTexture = loader.load('./image/venus_atmosphere.jpg', function ( atm ) {
@@ -93,7 +100,10 @@ const venusAtmosphereTexture = loader.load('./image/venus_atmosphere.jpg', funct
 const venusAtmosphereAlpha = loader.load('./image/venus_atmosphere_alpha_map.jpg');
 const earthDayTexture = loader.load('./image/earth_day.jpg');
 const earthNightTexture = loader.load('./image/earth_night.jpg');
-const earthNormalMap = loader.load('./image/earth_normal_map.tif');
+const earthCloudsTexture = loader.load('./image/4k_earth_clouds.jpg');
+const earthCloudsNormal = loader.load('./image/4k_earth_clouds_normal.png');
+const earthCloudsSpecular = loader.load('./image/4k_earth_clouds_specular.png');
+const earthCloudsAmbient = loader.load('./image/4k_earth_clouds_ao.png');
 const marsTexture = loader.load('./image/mars.jpg');
 const jupiterTexture = loader.load('./image/jupiter.jpg');
 const saturnTexture = loader.load('./image/saturn.jpg');
@@ -133,7 +143,7 @@ scene.add(backgr);
 
 const planets = {};
 
-const gmSun = new THREE.SphereGeometry(20, 80, 60);
+const gmSun = new THREE.SphereGeometry(25, 80, 60);
 const matSun = new THREE.MeshBasicMaterial({ side: THREE.FrontSide, map: sunTexture, transparent: true, opacity: 1 });
 planets['sun'] = new THREE.Mesh(gmSun, matSun);
 planets['sun'].position.set(0, 0, 0);
@@ -156,9 +166,9 @@ const matVenusAtmosphere = new THREE.MeshStandardMaterial({ side: THREE.FrontSid
 planets['venusAtmosphere'] = new THREE.Mesh(gmVenusAtmosphere, matVenusAtmosphere);
 venusOrbit.add(planets['venusAtmosphere']);
 
-
 // const earthPosition = new THREE.Vector3(0, 0, -40);
 const earthPosition = new THREE.Vector3(100, 0, 100);
+camera.lookAt(earthPosition)
 const zVect = new THREE.Vector3(0, 0, -1);
 const earthShader = {
     dayTexture: {
@@ -167,16 +177,9 @@ const earthShader = {
     nightTexture: {
         value: earthNightTexture
     },
-    normalMap: {
-        value: earthNormalMap
-    },
     angle: {
         type: 'f',
         value: zVect.angleTo(earthPosition) * (earthPosition.x < 0 ? -1 : 1)
-    },
-    earthPosition: {
-        type: 'v3',
-        value: earthPosition
     },
     rotY: {
         type: 'f',
@@ -259,6 +262,13 @@ planets['earth'] = new THREE.Mesh(gmEarth, matEarth);
 planets['earth'].rotateX(Math.PI / 2 * 24 / 90);
 earthOrbit.add(planets['earth']);
 
+const gmEarthAtmosphere = new THREE.SphereGeometry(4, 32, 36);
+const matEarthAtmosphere = new THREE.MeshPhongMaterial({ side: THREE.FrontSide, map: earthCloudsTexture, transparent: true, 
+        alphaMap: earthCloudsTexture, normalMap: earthCloudsNormal, specular: earthCloudsSpecular, aoMap: earthCloudsAmbient  });
+planets['earthAtmosphere'] = new THREE.Mesh(gmEarthAtmosphere, matEarthAtmosphere);
+planets['earthAtmosphere'].scale.multiplyScalar(1.01);
+planets['earthAtmosphere'].rotateX(Math.PI / 2 * 24 / 90);
+earthOrbit.add(planets['earthAtmosphere']);
 
 const gmMars = new THREE.SphereGeometry(3, 40, 32);
 const matMars = new THREE.MeshStandardMaterial({ side: THREE.FrontSide, map: marsTexture, transparent: true, opacity: 1 });
@@ -330,7 +340,21 @@ scene.add(planetsGroup);
 
 const pLight = new THREE.PointLight(0xffffff, 1);
 pLight.position.copy(planets['sun'].position);
+pLight.castShadow = true;
 planetsGroup.add(pLight);
+
+const earthLight = new THREE.SpotLight(0xffffff, 5, 20, 0.4, 0);
+earthLight.position.copy(earthOrbit.localToWorld(new THREE.Vector3(5 * Math.sin(earthShader.angle.value + earthShader.rotY.value), 0, 5 * Math.cos(earthShader.angle.value + earthShader.rotY.value))));
+earthLight.target = planets['earth'];
+// const helper = new THREE.SpotLightHelper(earthLight, 0xff0000);
+scene.add(earthLight);
+
+// const folder = gui.addFolder('vars');
+// folder.add(earthLight, 'intensity', 0, 1 );
+// folder.add(earthLight, 'penumbra', 0, 1 );
+// folder.add(earthLight, 'angle', 0, Math.PI / 2 );
+// folder.open();
+
 const aLight = new THREE.AmbientLight(0xffffff, 0.05);
 scene.add(aLight);
 // const helper = new THREE.SpotLightHelper(pLight, 0xff0000);
@@ -366,14 +390,14 @@ function rotatePlanet(planet, rotSpeed) {
     planet.rotateOnAxis(new THREE.Vector3(0, 1, 0), rotSpeed);
 }
 
-const       mercuryStart = new THREE.Vector3(45, 0, 0),
-            venusStart = new THREE.Vector3(-60, 0, 70),
-            earthStart = new THREE.Vector3().copy(earthPosition),
-            marsStart = new THREE.Vector3(130, 0, -150),
-            jupiterStart = new THREE.Vector3(-220, 0, -300),
-            saturnStart = new THREE.Vector3(150, 0, -520),
-            uranusStart = new THREE.Vector3(-800, 0, 300),
-            neptuneStart = new THREE.Vector3(700, 0, 700);
+const       mercuryStart = new THREE.Vector3(55, 0, 0).multiplyScalar(0.6),
+            venusStart = new THREE.Vector3(-60, 0, 70).multiplyScalar(0.6),
+            earthStart = new THREE.Vector3().copy(earthPosition).multiplyScalar(0.6),
+            marsStart = new THREE.Vector3(130, 0, -150).multiplyScalar(0.6),
+            jupiterStart = new THREE.Vector3(-220, 0, -300).multiplyScalar(0.6),
+            saturnStart = new THREE.Vector3(150, 0, -520).multiplyScalar(0.6),
+            uranusStart = new THREE.Vector3(-800, 0, 300).multiplyScalar(0.6),
+            neptuneStart = new THREE.Vector3(700, 0, 700).multiplyScalar(0.6);
 
 mercuryOrbit.position.copy(mercuryStart);
 venusOrbit.position.copy(venusStart);
@@ -399,6 +423,8 @@ const       mercuryRot  = 0.0003 * rotSpeed,
 
 function anim() {
     let time = clock.getElapsedTime();
+    earthLight.position.copy(earthOrbit.localToWorld(new THREE.Vector3(15 * Math.sin(-earthShader.angle.value), 0, 15 * Math.cos(-earthShader.angle.value))));
+    // helper.update();
     // console.log(earthOrbit.position)
     // console.log(uranusOrbit.position)
     // const position = Wh.geometry.attributes.position;
@@ -428,8 +454,8 @@ function anim() {
     // Wh.rotateY(wormhole_rotation);
     // Sp.rotateY(space_rotation);
 
-    earthPosition.copy(earthOrbit.position);
-    earthShader.angle.value = zVect.angleTo(earthPosition) * (earthPosition.x < 0 ? -1 : 1);
+    // earthPosition.copy(earthOrbit.position);
+    earthShader.angle.value = zVect.angleTo(earthOrbit.position) * (earthOrbit.position.x < 0 ? -1 : 1);
     // earthShader.pointLightPosition.value.copy(pLight.position)
     // earthShader.tilt.value = (Math.sin(Math.atan2(earthPosition.z, earthPosition.x)) + 1) / 2;
     // earthShader.opacity.value += 0.001;
@@ -449,6 +475,7 @@ function anim() {
     rotatePlanet(planets['venus'], venusRot);
     rotatePlanet(planets['venusAtmosphere'], venusRot);
     rotatePlanet(planets['earth'], earthRot);
+    rotatePlanet(planets['earthAtmosphere'], earthRot * 1.05);
     rotatePlanet(planets['mars'], marsRot);
     rotatePlanet(planets['jupiter'], jupiterRot);
     rotatePlanet(planets['saturn'], saturnRot);
@@ -456,6 +483,7 @@ function anim() {
     rotatePlanet(planets['uranus'], uranusRot);
     rotatePlanet(planets['neptune'], neptuneRot);
     planets['venusAtmosphere'].rotateOnAxis(new THREE.Vector3(-0.5, 1.5, 1).normalize(), 0.001);
+    planets['earthAtmosphere'].rotateOnAxis(new THREE.Vector3(0, 0, 1), earthRot * 0.1);
     uranusRingOrbit.rotateOnAxis(new THREE.Vector3(0, 0, 1), 0.003);
     saturnRingOrbit.rotateOnAxis(new THREE.Vector3(0, 0, 1), saturnRot);
     // planetsGroup.rotateY(0.001);

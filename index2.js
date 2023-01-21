@@ -27,8 +27,7 @@ window.addEventListener('wheel', (e) =>
 {
     camZ += e.deltaY * 0.001;
     console.log(camZ);
-})
-
+});
 
 // const   space_length        = 1000,
 //         wormhole_length     = 400,
@@ -83,6 +82,9 @@ const spAlphaMap = loader.load('./image/alpha-map2.jpg', function ( map ) {
 
 })
 
+const buttonTexture = loader.load('./image/button.png');
+const buttonPressedTexture = loader.load('./image/button_press.png');
+
 const uranusTexture = loader.load('./image/uranus.jpg', function ( map ) {
 
 })
@@ -93,6 +95,22 @@ const uranusRingTexture = loader.load('./image/uranus_ring_alpha_polar.png', fun
 
 // const whGroup = new THREE.Group();
 // const planetsGroup = new THREE.Group();
+let planets = [];
+
+const raycaster = new THREE.Raycaster()
+
+const gmBtn = new THREE.RingGeometry(0, 10, 100);
+const matBtn = new THREE.MeshBasicMaterial({ side: THREE.FrontSide, transparent: true, map: buttonTexture, opacity: 0.7 });
+const btn = new THREE.Mesh(gmBtn, matBtn);
+btn.position.copy(camera.position);
+btn.position.z -= 20;
+scene.add(btn);
+
+const matBtnPressed = new THREE.MeshBasicMaterial({ side: THREE.FrontSide, transparent: true, map: buttonPressedTexture, opacity: 0 });
+const btnPressed = new THREE.Mesh(gmBtn, matBtnPressed);
+btnPressed.position.copy(camera.position);
+btnPressed.position.z -= 20;
+scene.add(btnPressed);
 
 const gmBack = new THREE.SphereGeometry(space_length * 1.1 / 2, 100, 100, 1, Math.PI * 2);
 const matBack = new THREE.MeshBasicMaterial({ map: background, side: THREE.BackSide, transparent: true, opacity: 0 });
@@ -100,8 +118,6 @@ const backgr = new THREE.Mesh(gmBack, matBack);
 backgr.rotateZ(-1);
 backgr.position.z = -space_length * 0.9;
 scene.add(backgr);
-
-const planets = {};
 
 const gmUranus = new THREE.SphereGeometry(5, 32, 32);
 const matUranus = new THREE.MeshStandardMaterial({ side: THREE.FrontSide, map: uranusTexture, transparent: true, opacity: 0 });
@@ -148,10 +164,18 @@ scene.add(pLight);
 // const helper = new THREE.SpotLightHelper(pLight, 0xff0000);
 // scene.add(helper);
 let flag = true;
+let btnActive = {
+    value: 0
+}
 // const controls = new OrbitControls( camera, renderer.domElement );
 // const c = new Clock();
 
+const mouse = new THREE.Vector2();
+
 window.addEventListener('mousemove', (e) => {
+    mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+    mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+
     if (!flag) {
         let point = new THREE.Vector3;
         point.copy(camera.position);
@@ -163,10 +187,39 @@ window.addEventListener('mousemove', (e) => {
         camera.lookAt(point);
         // console.log(e.clientX, e.clientY);
     }
-})
+});
+
+// window.addEventListener('mousedown', (e) => {
+//     if (e.button === 0 && raycaster.intersectObjects( scene.children)[0] === )
+// })
+
+const buttonTl = gsap.timeline();
+buttonTl.to(btn.material, {opacity: 0, duration: 0.2})
+        .to(btnPressed.material, {opacity: 0.7, duration: 0.2}, '<0')
+        .to(btn.scale, {x: 1.1, y: 1.1, duration: 0.2}, '<0')
+        .to(btnPressed.scale, {x: 1.1, y: 1.1, duration: 0.2}, '<0')
+        .to(btnPressed.material, {opacity: 0.7, duration: 0.2}, '<0')
+        .to(btnActive, {value: 1, duration: 0}, '>0');
+buttonTl.pause();
 
 const noise = createNoise3D();
 function anim() {
+    raycaster.setFromCamera( mouse, camera );
+    const intersects = raycaster.intersectObjects( scene.children );
+
+    if (!btnActive.value) {
+        if (intersects[0].object === btn) {
+            buttonTl.play();
+        }
+    }
+    else if (intersects[1].object !== btnPressed) {
+        console.log(intersects[1])
+        buttonTl.reverse();
+    }
+	// for ( let i = 0; i < intersects.length; i ++ ) {
+	// 	console.log(intersects[i]);
+	// }
+
     if (flag) {
         camera.position.z += camZ;
         camZ *= 0.995;
@@ -231,7 +284,7 @@ function gsapInit() {
     const tlMain = gsap.timeline();
     tlMain.to(matWh, {opacity: 0.8, duration: 0.5}, startTime)
     .to(matWh, {opacity: 0, duration: 0.3}, '>0.5')
-    .to(camera.position, {z: -800, duration: 0})
+    // .to(camera.position, {z: -800, duration: 0})
     .to(whAlphaMap.repeat, {x: 1, y: wormhole_freq, duration: 1}, '<0')
     .to(matWh, {opacity: 0.7, duration: 0.5}, '<2')
     .to(matStar, {opacity: 0.8, duration: 2}, '<1')
