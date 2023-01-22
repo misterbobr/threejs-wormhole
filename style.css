@@ -4,3 +4,8 @@ body {
     margin: 0;
     background-color: black;
 }
+
+.loading {
+    position: relative;
+    padding: 25vh 25vw;
+}
